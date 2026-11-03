@@ -16,16 +16,32 @@ function runSync_(config, options) {
   const dryRun = !!(options && options.dryRun);
   const result = { created: 0, updated: 0, unchanged: 0, deleted: 0, skipped: 0, plans: [], errors: [] };
 
-  const feed = parseIcal_(fetchFeed_(config.feedUrl), config.timezone);
   const horizon = new Date(now.getTime() + config.lookaheadDays * DAY_MS);
-  const games = feed.events.filter((game) => {
-    if (game.status === 'CANCELLED' || game.start <= now || game.start > horizon) return false;
-    if (config.skipPattern && config.skipPattern.test(game.summary)) {
-      result.skipped++;
-      return false;
+  const games = [];
+  const seen = {};
+  let failedFeeds = 0;
+  for (const feed of config.feeds) {
+    let parsed;
+    try {
+      parsed = parseIcal_(fetchFeed_(feed.url), config.timezone);
+    } catch (err) {
+      failedFeeds++;
+      result.errors.push(`${feed.name}: ${err.message}`);
+      continue;
     }
-    return true;
-  });
+    for (const game of parsed.events) {
+      if (game.status === 'CANCELLED' || game.start <= now || game.start > horizon) continue;
+      if (seen[game.uid]) continue; // same event in several feeds: first feed wins
+      if ((feed.includePattern && !feed.includePattern.test(game.summary)) ||
+          (feed.skipPattern && feed.skipPattern.test(game.summary))) {
+        result.skipped++;
+        continue;
+      }
+      seen[game.uid] = true;
+      games.push({ game, feed, timezone: parsed.timezone });
+    }
+  }
+  if (failedFeeds === config.feeds.length) throw new Error(result.errors.join('\n'));
 
   const calendar = getCalendar_(config.calendarId);
   const byUid = {};
@@ -43,15 +59,17 @@ function runSync_(config, options) {
   }
 
   const wanted = {};
-  for (const game of games) {
+  for (const { game, feed, timezone } of games) {
     wanted[game.uid] = true;
     try {
-      syncGame_(game, byUid[game.uid], calendar, config, feed.timezone, now, dryRun, result);
+      syncGame_(game, feed, byUid[game.uid], calendar, config, timezone, now, dryRun, result);
     } catch (err) {
       result.errors.push(`${game.summary} (${game.start.toISOString()}): ${err.message}`);
     }
   }
 
+  // If any feed couldn't be read, we can't tell which games were removed, so delete nothing.
+  if (failedFeeds) return result;
   for (const uid of Object.keys(byUid)) {
     if (wanted[uid]) continue;
     if (!dryRun) byUid[uid].deleteEvent();
@@ -60,11 +78,12 @@ function runSync_(config, options) {
   return result;
 }
 
-function syncGame_(game, existing, calendar, config, timezone, now, dryRun, result) {
+function syncGame_(game, feed, existing, calendar, config, timezone, now, dryRun, result) {
   const address = extractAddress_(game.location, config.locationOverrides);
   const title = config.titleTemplate.replace('{summary}', game.summary);
+  const prepMinutes = Math.max(0, config.prepMinutes + feed.adjustmentMinutes);
   const signature = hashString_(
-    [game.start.getTime(), game.summary, address, config.homeAddress, config.prepMinutes, config.roundMinutes, title].join('|'),
+    [game.start.getTime(), game.summary, address, config.homeAddress, prepMinutes, config.roundMinutes, title].join('|'),
   );
 
   if (existing && existing.getTag(TAG_SIGNATURE) === signature) {
@@ -76,8 +95,8 @@ function syncGame_(game, existing, calendar, config, timezone, now, dryRun, resu
     }
   }
 
-  const plan = planDeparture_(game, address, config, now);
-  const description = describePlan_(game, plan, config, timezone);
+  const plan = planDeparture_(game, address, prepMinutes, config, now);
+  const description = describePlan_(game, plan, timezone);
   result.plans.push({ title, departure: plan.departure, gameStart: game.start, driveMinutes: plan.driveMinutes, address });
   if (dryRun) return;
 
@@ -100,12 +119,13 @@ function syncGame_(game, existing, calendar, config, timezone, now, dryRun, resu
 }
 
 /**
- * Works backwards from game start: arrive `prepMinutes` early, and leave early enough
- * to cover the drive. The drive is first estimated without a departure time, then
- * re-estimated with traffic predicted for the resulting departure time.
+ * Works backwards from game start: arrive `prepMinutes` early (PREP_MINUTES plus the
+ * feed's ADJUSTMENT_MINUTES), and leave early enough to cover the drive. The drive is
+ * first estimated without a departure time, then re-estimated with traffic predicted
+ * for the resulting departure time.
  */
-function planDeparture_(game, address, config, now) {
-  const arriveBy = new Date(game.start.getTime() - config.prepMinutes * MINUTE_MS);
+function planDeparture_(game, address, prepMinutes, config, now) {
+  const arriveBy = new Date(game.start.getTime() - prepMinutes * MINUTE_MS);
   let driveSeconds = estimateDriveSeconds_(config.homeAddress, address, null);
   const firstGuess = new Date(arriveBy.getTime() - driveSeconds * 1000);
   if (firstGuess > now) driveSeconds = estimateDriveSeconds_(config.homeAddress, address, firstGuess);
@@ -113,7 +133,7 @@ function planDeparture_(game, address, config, now) {
   const roundMs = config.roundMinutes * MINUTE_MS;
   let departure = new Date(Math.floor((arriveBy.getTime() - driveSeconds * 1000) / roundMs) * roundMs);
   if (departure >= game.start) departure = new Date(game.start.getTime() - roundMs);
-  return { departure, arriveBy, driveMinutes: Math.ceil(driveSeconds / 60) };
+  return { departure, arriveBy, prepMinutes, driveMinutes: Math.ceil(driveSeconds / 60) };
 }
 
 function estimateDriveSeconds_(origin, destination, departAt) {
@@ -129,11 +149,11 @@ function estimateDriveSeconds_(origin, destination, departAt) {
   return response.routes[0].legs.reduce((sum, leg) => sum + (leg.duration_in_traffic || leg.duration).value, 0);
 }
 
-function describePlan_(game, plan, config, timezone) {
+function describePlan_(game, plan, timezone) {
   const t = (d) => formatTime_(d, timezone);
   return [
     `Leave by ${t(plan.departure)} (~${plan.driveMinutes} min drive) to arrive by ${t(plan.arriveBy)}, ` +
-      `${config.prepMinutes} min before the ${t(game.start)} start.`,
+      `${plan.prepMinutes} min before the ${t(game.start)} start.`,
     '',
     `Event: ${game.summary}`,
     `Where: ${game.location}`,

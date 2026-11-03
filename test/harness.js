@@ -40,7 +40,7 @@ class FakeCalendar {
  */
 function load(opts = {}) {
   const calendar = opts.calendar || new FakeCalendar();
-  const state = { feed: opts.feed || FIXTURE, feedStatus: 200, mapsCalls: [], calendar };
+  const state = { feed: opts.feed || FIXTURE, feedStatus: 200, feeds: {}, fetchedUrls: [], mapsCalls: [], calendar };
   const driveMinutes = opts.driveMinutes || ((departAt) => (departAt ? 23 : 18));
 
   const Maps = {
@@ -71,8 +71,9 @@ function load(opts = {}) {
     Maps,
     UrlFetchApp: {
       fetch(url) {
-        state.fetchedUrl = url;
-        return { getResponseCode: () => state.feedStatus, getContentText: () => state.feed };
+        state.fetchedUrls.push(url);
+        const feed = state.feeds[url] || { text: state.feed, status: state.feedStatus };
+        return { getResponseCode: () => feed.status || 200, getContentText: () => feed.text };
       },
     },
     CalendarApp: {
