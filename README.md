@@ -1,4 +1,4 @@
-# lead-time
+# google-cal-lead-time
 
 A Google Apps Script that watches one or more iCal feeds (for example, hockey league schedules) and adds a
 **"🚗 Leave for …"** event to your Google Calendar before each game. Each block starts when you need
@@ -92,7 +92,7 @@ Misspelled or unknown keys cause an error, so a typo can't be silently ignored.
 ```sh
 npm install -g @google/clasp
 clasp login           # also turn on the Apps Script API at https://script.google.com/home/usersettings
-clasp create --type standalone --title lead-time --rootDir src
+clasp create --type standalone --title google-cal-lead-time --rootDir src
 clasp push -f
 ```
 
@@ -109,7 +109,7 @@ Don't use `clasp clone`, because it overwrites your local files in `src/`. To up
 
 **Option B: copy and paste**
 
-1. Go to <https://script.google.com> → **New project**. Rename it to `lead-time`.
+1. Go to <https://script.google.com> → **New project**. Rename it to `google-cal-lead-time`.
 2. For each `.js` file in `src/`, click **+ → Script**, name it without the `.js` extension, and paste
    in the contents. Delete the default `Code.gs`.
 3. Click **Project Settings** (gear icon), enable **Show "appsscript.json" manifest file in editor**,
@@ -119,7 +119,7 @@ Don't use `clasp clone`, because it overwrites your local files in `src/`. To up
 
 1. In the function dropdown, choose **`previewLeadTimes`** → **Run**. The first time, Google asks you
    to authorize the script. Because this is your own unpublished script, you'll see *"Google hasn't
-   verified this app"*. Click **Advanced → Go to lead-time (unsafe)** → **Allow**. The script asks
+   verified this app"*. Click **Advanced → Go to google-cal-lead-time (unsafe)** → **Allow**. The script asks
    for Calendar access and permission to fetch the feed URL.
 2. Open the **Execution log** to see the planned departure times. No events are created in this step.
 3. Run **`installTrigger`**. This creates an hourly trigger and runs the first sync right away.
