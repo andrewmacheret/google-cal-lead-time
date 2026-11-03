@@ -81,7 +81,7 @@ function load(opts = {}) {
       getCalendarById: (id) => (id === 'known@group.calendar.google.com' ? calendar : null),
     },
   });
-  for (const file of ['Config.js', 'Ical.js', 'Sync.js']) {
+  for (const file of ['ConfigLoader.js', 'Ical.js', 'Sync.js']) {
     vm.runInContext(fs.readFileSync(path.join(SRC, file), 'utf8'), context, { filename: file });
   }
   return { gs: context, state, calendar };
