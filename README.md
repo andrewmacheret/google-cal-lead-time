@@ -73,7 +73,7 @@ gets one lead-time event, using the first feed in the list that includes it.
 | `REMINDER_MINUTES` | | `15`: popup this long before you need to leave; `null` for none | `15` |
 | `LOOKAHEAD_DAYS` | | `21` | `21` |
 | `REFRESH_HOURS` | | `12` | `12` |
-| `ROUND_MINUTES` | | `5`: the departure time is rounded down to a multiple of this | `5` |
+| `ROUND_MINUTES` | | `5`: prep + drive is rounded up to a multiple of this (30 + 31 → 65 min) | `5` |
 | `TITLE_TEMPLATE` | | `'🚗 Leave for {summary}'` | `'🚗 Leave for {summary}'` |
 | `LOCATION_OVERRIDES` | | `{ 'Olympic View': '7012 220th St SW, Mountlake Terrace, WA' }` | `{}` |
 | `TIMEZONE` | | `'America/Los_Angeles'`, for feed times without a time zone | feed's `X-WR-TIMEZONE` |
