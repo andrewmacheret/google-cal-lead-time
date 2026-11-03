@@ -162,7 +162,7 @@ function describePlan_(game, plan, timezone) {
     `Event: ${game.summary}`,
     `Where: ${game.location}`,
     '',
-    'Created by lead-time. Manual edits will be overwritten.',
+    'Created by google-cal-lead-time. Manual edits will be overwritten.',
   ].join('\n');
 }
 
