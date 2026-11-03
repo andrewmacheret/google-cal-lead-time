@@ -2,6 +2,9 @@ const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 
+// Bump when the departure calculation changes so existing events are recomputed on the next run.
+const SYNC_VERSION = 2;
+
 // Tags stored on each lead-time event so later runs can find and update it.
 const TAG_UID = 'leadTimeUid';
 const TAG_SIGNATURE = 'leadTimeSignature';
@@ -83,7 +86,7 @@ function syncGame_(game, feed, existing, calendar, config, timezone, now, dryRun
   const title = config.titleTemplate.replace('{summary}', game.summary);
   const prepMinutes = Math.max(0, config.prepMinutes + feed.adjustmentMinutes);
   const signature = hashString_(
-    [game.start.getTime(), game.summary, address, config.homeAddress, prepMinutes, config.roundMinutes, title].join('|'),
+    [SYNC_VERSION, game.start.getTime(), game.summary, address, config.homeAddress, prepMinutes, config.roundMinutes, title].join('|'),
   );
 
   if (existing && existing.getTag(TAG_SIGNATURE) === signature) {
@@ -130,9 +133,10 @@ function planDeparture_(game, address, prepMinutes, config, now) {
   const firstGuess = new Date(arriveBy.getTime() - driveSeconds * 1000);
   if (firstGuess > now) driveSeconds = estimateDriveSeconds_(config.homeAddress, address, firstGuess);
 
+  // Round the total lead time (prep + drive) up, e.g. 30 + 31 = 61 → 65 minutes.
   const roundMs = config.roundMinutes * MINUTE_MS;
-  let departure = new Date(Math.floor((arriveBy.getTime() - driveSeconds * 1000) / roundMs) * roundMs);
-  if (departure >= game.start) departure = new Date(game.start.getTime() - roundMs);
+  const leadMs = Math.max(roundMs, Math.ceil((prepMinutes * MINUTE_MS + driveSeconds * 1000) / roundMs) * roundMs);
+  const departure = new Date(game.start.getTime() - leadMs);
   return { departure, arriveBy, prepMinutes, driveMinutes: Math.ceil(driveSeconds / 60) };
 }
 

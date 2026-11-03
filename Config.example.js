@@ -35,7 +35,7 @@ const SETTINGS = {
   LOOKAHEAD_DAYS: 21,
   // Re-check traffic for an unchanged game at most this often.
   REFRESH_HOURS: 12,
-  // Round the departure time down to a multiple of this many minutes.
+  // Round the total lead time (prep + drive) up to a multiple of this many minutes.
   ROUND_MINUTES: 5,
   // Title of the lead-time event. {summary} is replaced with the game title.
   TITLE_TEMPLATE: '🚗 Leave for {summary}',

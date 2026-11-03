@@ -241,3 +241,20 @@ test('one broken feed does not block others and deletes nothing', () => {
   state.feeds['https://two'] = { text: OTHER_FEED };
   assert.equal(run().deleted, 1);
 });
+
+test('rounds prep + drive up to ROUND_MINUTES, regardless of the start minute', () => {
+  const feed = FIXTURE.replace('DTSTART:20261021T205500', 'DTSTART:20261021T205700');
+  const { run, calendar } = setup({}, { feed, driveMinutes: (d) => (d ? 31 : 25) });
+  run();
+  const ev = byUid(calendar)['1001@test'];
+  // 30 prep + 31 drive = 61 → 65 min before 20:57 = 19:52 PDT.
+  assert.equal(ev.end.getTime() - ev.start.getTime(), 65 * 60e3);
+  assert.equal(ev.start.toISOString(), '2026-10-22T02:52:00.000Z');
+});
+
+test('exact multiples are not padded further', () => {
+  const { run, calendar } = setup({}, { driveMinutes: () => 30 });
+  run();
+  const ev = byUid(calendar)['1001@test'];
+  assert.equal(ev.end.getTime() - ev.start.getTime(), 60 * 60e3);
+});
