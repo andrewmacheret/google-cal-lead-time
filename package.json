@@ -1,0 +1,8 @@
+{
+  "name": "lead-time",
+  "private": true,
+  "description": "Google Apps Script that adds 'time to leave' events before games from an iCal feed.",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  }
+}
