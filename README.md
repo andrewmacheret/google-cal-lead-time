@@ -1,6 +1,6 @@
 # lead-time
 
-A Google Apps Script that watches an iCal feed (for example, a hockey league schedule) and adds a
+A Google Apps Script that watches one or more iCal feeds (for example, hockey league schedules) and adds a
 **"🚗 Leave for …"** event to your Google Calendar before each game. Each block starts when you need
 to leave home and ends when the game starts:
 
@@ -14,7 +14,8 @@ from the feed, its lead-time event is deleted.
 
 ## How it works
 
-1. Downloads the feed and finds games within the next `LOOKAHEAD_DAYS`.
+1. Downloads each feed and finds games within the next `LOOKAHEAD_DAYS` that pass that feed's
+   include and skip patterns.
 2. Gets the street address from each event's `LOCATION`. For example,
    `Kraken Community Iceplex on Smartsheet Rink 2 10601 5th Ave NE Seattle WA 98125` becomes
    `10601 5th Ave NE Seattle WA 98125`.
@@ -47,11 +48,29 @@ clasp push
 
 ### 2. Configure
 
-In the script editor, open **Project Settings → Script properties → Add script property**:
+In the script editor, open **Project Settings → Script properties → Add script property**.
+
+#### Feeds
+
+Each feed is a group of properties that share a numeric suffix (`_1`, `_2`, …). Add as many groups
+as you need:
+
+| Property | Required | Example | Meaning |
+| --- | --- | --- | --- |
+| `FEED_URL_1` | ✅ | `webcal://sportsix.sports-it.com/ical?cid=…&id=…&k=…` | iCal feed (`webcal://` or `https://`) |
+| `INCLUDE_PATTERN_1` | | `Monarchs\|Seals` | Regex. Only events whose title matches get a lead-time event. Blank means all. |
+| `SKIP_PATTERN_1` | | `Drop-In` | Regex. Events whose title matches are ignored. Applied after `INCLUDE_PATTERN`. |
+| `ADJUSTMENT_MINUTES_1` | | `10` or `-15` | Added to `PREP_MINUTES` for this feed. Positive means leave earlier, negative means later. Blank means `0`. |
+
+Patterns are case-insensitive. A total prep time below zero counts as zero, so you never arrive after
+the start. If the same event (same UID) appears in more than one feed, it gets one lead-time event,
+using the lowest-numbered feed that includes it. For a single feed, you can also leave off the
+suffix (`FEED_URL`, `INCLUDE_PATTERN`, …).
+
+#### Everything else
 
 | Property | Required | Example | Default |
 | --- | --- | --- | --- |
-| `FEED_URL` | ✅ | `webcal://sportsix.sports-it.com/ical?cid=…&id=…&k=…` | |
 | `HOME_ADDRESS` | ✅ | `123 Main St, Seattle, WA 98101` | |
 | `PREP_MINUTES` | | `30`: time at the rink before the game starts | `30` |
 | `CALENDAR_ID` | | `abc123@group.calendar.google.com` | primary calendar |
@@ -60,12 +79,11 @@ In the script editor, open **Project Settings → Script properties → Add scri
 | `REFRESH_HOURS` | | `12` | `12` |
 | `ROUND_MINUTES` | | `5`: the departure time is rounded down to a multiple of this | `5` |
 | `TITLE_TEMPLATE` | | `🚗 Leave for {summary}` | `🚗 Leave for {summary}` |
-| `SKIP_PATTERN` | | `Drop-In`: a regex; matching events are ignored | none |
 | `LOCATION_OVERRIDES` | | `{"Olympic View": "7012 220th St SW, Mountlake Terrace, WA"}` | `{}` |
 | `TIMEZONE` | | `America/Los_Angeles`, for feed times without a time zone | feed's `X-WR-TIMEZONE` |
 
 Settings are stored as script properties instead of in the code, so your address and private feed
-key never end up in git.
+keys never end up in git.
 
 > **Tip:** Consider making a separate Google Calendar (for example, "Hockey travel") and putting its ID
 > in `CALENDAR_ID`. You can find the ID under Google Calendar → Settings → *your calendar* →
@@ -96,7 +114,10 @@ summary.
 
 ## Notes
 
-- Changing a setting (for example, `PREP_MINUTES`) updates all upcoming events on the next run.
+- Changing a setting (for example, `PREP_MINUTES` or `ADJUSTMENT_MINUTES_2`) updates the affected
+  upcoming events on the next run.
+- If a feed can't be downloaded, the other feeds still sync, but no lead-time events are deleted on
+  that run. The script can't tell which games were removed from a feed it couldn't read.
 - Lead-time events are identified by hidden tags, so you can rename or recolor the calendar freely.
   However, the next update overwrites any edits you make to an event's title, time, or description.
 - The Apps Script Maps service has a daily quota. The script calls it about twice per game per

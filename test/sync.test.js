@@ -1,13 +1,14 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { load, FakeCalendar } = require('./harness');
+const { load, FIXTURE } = require('./harness');
 
 const NOW = new Date('2026-10-20T12:00:00Z');
 const PROPS = { FEED_URL: 'webcal://example.com/ical?k=1', HOME_ADDRESS: '1 Home St, Seattle WA' };
 
 function setup(extraProps = {}, opts = {}) {
   const env = load(opts);
-  const config = env.gs.loadConfig_({ ...PROPS, ...extraProps });
+  const base = Object.keys(extraProps).some((k) => /^FEED_URL_/.test(k)) ? { HOME_ADDRESS: PROPS.HOME_ADDRESS } : PROPS;
+  const config = env.gs.loadConfig_({ ...base, ...extraProps });
   const run = (o = {}) => env.gs.runSync_(config, { now: o.now || NOW, dryRun: o.dryRun });
   return { ...env, config, run };
 }
@@ -15,7 +16,7 @@ const byUid = (calendar) => Object.fromEntries(calendar.events.map((e) => [e.get
 
 test('config converts webcal and requires feed + home', () => {
   const { gs } = load();
-  assert.equal(gs.loadConfig_(PROPS).feedUrl, 'https://example.com/ical?k=1');
+  assert.equal(gs.loadConfig_(PROPS).feeds[0].url, 'https://example.com/ical?k=1');
   assert.throws(() => gs.loadConfig_({ HOME_ADDRESS: 'x' }), /FEED_URL/);
   assert.throws(() => gs.loadConfig_({ FEED_URL: 'x' }), /HOME_ADDRESS/);
   assert.throws(() => gs.loadConfig_({ ...PROPS, PREP_MINUTES: 'abc' }), /PREP_MINUTES/);
@@ -24,7 +25,7 @@ test('config converts webcal and requires feed + home', () => {
 test('creates one lead-time event per upcoming game, ending at game start', () => {
   const { run, calendar, state } = setup();
   const result = run();
-  assert.equal(state.fetchedUrl, 'https://example.com/ical?k=1');
+  assert.deepEqual(state.fetchedUrls, ['https://example.com/ical?k=1']);
   assert.deepEqual([result.created, result.errors.length], [3, 0]);
 
   const events = byUid(calendar);
@@ -105,11 +106,13 @@ test('leaves past and in-progress lead-time events alone', () => {
   assert.ok(calendar.events.includes(ev));
 });
 
-test('SKIP_PATTERN ignores matching events', () => {
-  const { run, calendar } = setup({ SKIP_PATTERN: 'drop-in' });
-  const result = run();
-  assert.equal(result.skipped, 1);
+test('unsuffixed SKIP_PATTERN / INCLUDE_PATTERN apply to FEED_URL', () => {
+  let { run, calendar } = setup({ SKIP_PATTERN: 'drop-in' });
+  assert.equal(run().skipped, 1);
   assert.ok(!byUid(calendar)['1003@test']);
+  ({ run, calendar } = setup({ INCLUDE_PATTERN: 'drop-in' }));
+  assert.equal(run().skipped, 2);
+  assert.deepEqual(Object.keys(byUid(calendar)), ['1003@test']);
 });
 
 test('dry run changes nothing', () => {
@@ -141,4 +144,94 @@ test('a Maps failure for one game is reported without blocking the others', () =
 test('writes to a specific calendar when CALENDAR_ID is set', () => {
   const { run } = setup({ CALENDAR_ID: 'missing@group.calendar.google.com' });
   assert.throws(() => run(), /Calendar not found/);
+});
+
+test('config groups numbered feed properties and validates them', () => {
+  const { gs } = load();
+  const { feeds } = gs.loadConfig_({
+    HOME_ADDRESS: 'x',
+    FEED_URL_10: 'https://ten', ADJUSTMENT_MINUTES_10: '-15',
+    FEED_URL_2: 'webcal://two', INCLUDE_PATTERN_2: 'monarchs|seals', SKIP_PATTERN_2: 'drop-in', ADJUSTMENT_MINUTES_2: '+10',
+    FEED_URL: 'https://plain',
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(feeds.map((f) => [f.name, f.url, f.adjustmentMinutes]))), [
+    ['FEED_URL', 'https://plain', 0],
+    ['FEED_URL_2', 'https://two', 10],
+    ['FEED_URL_10', 'https://ten', -15],
+  ]);
+  assert.ok(feeds[1].includePattern.test('Seattle Seals vs X'));
+  assert.ok(feeds[1].skipPattern.test('Novice Drop-In Goalie'));
+  assert.equal(feeds[0].includePattern, null);
+
+  const base = { HOME_ADDRESS: 'x', FEED_URL_1: 'https://one' };
+  assert.throws(() => gs.loadConfig_({ ...base, SKIP_PATTERN_3: 'x' }), /SKIP_PATTERN_3 set but FEED_URL_3 is missing/);
+  assert.throws(() => gs.loadConfig_({ ...base, ADJUSTMENT_MINUTES_1: '5.5' }), /ADJUSTMENT_MINUTES_1 must be a whole number/);
+  assert.throws(() => gs.loadConfig_({ ...base, INCLUDE_PATTERN_1: '(' }), /INCLUDE_PATTERN_1 is not a valid regular expression/);
+  assert.equal(gs.loadConfig_({ ...base, ADJUSTMENT_MINUTES_1: ' ' }).feeds[0].adjustmentMinutes, 0);
+});
+
+const TWO_FEEDS = { HOME_ADDRESS: '1 Home St', FEED_URL_1: 'https://one', FEED_URL_2: 'https://two' };
+const OTHER_FEED = FIXTURE.replace(/UID:(\d+)@test/g, 'UID:$1@other');
+
+test('merges multiple feeds with per-feed include, skip and adjustment', () => {
+  const { run, calendar, state } = setup({
+    ...TWO_FEEDS,
+    INCLUDE_PATTERN_1: 'monarchs|goalie', SKIP_PATTERN_1: 'drop-in', ADJUSTMENT_MINUTES_1: '10',
+    ADJUSTMENT_MINUTES_2: '-20',
+  });
+  state.feeds = { 'https://one': { text: FIXTURE }, 'https://two': { text: OTHER_FEED } };
+  const result = run();
+  // Feed 1 keeps only "Monarchs" (goalie matches include but also skip). Feed 2 keeps all 3.
+  assert.deepEqual([result.created, result.skipped, result.errors.length], [4, 2, 0]);
+  const events = byUid(calendar);
+  assert.deepEqual(Object.keys(events).sort(), ['1001@other', '1001@test', '1003@other', '1004@other']);
+  // 20:55 start: feed 1 prep 30+10=40 → arrive 20:15, -23 → 19:52 → 19:50 PDT.
+  assert.equal(events['1001@test'].start.toISOString(), '2026-10-22T02:50:00.000Z');
+  assert.match(events['1001@test'].description, /40 min before the 8:55 PM start/);
+  // Feed 2 prep 30-20=10 → arrive 20:45, -23 → 20:22 → 20:20 PDT.
+  assert.equal(events['1001@other'].start.toISOString(), '2026-10-22T03:20:00.000Z');
+});
+
+test('changing an adjustment updates existing events on the next run', () => {
+  const { gs, calendar, state } = setup();
+  state.feeds = { 'https://one': { text: FIXTURE } };
+  const props = { HOME_ADDRESS: '1 Home St', FEED_URL_1: 'https://one' };
+  gs.runSync_(gs.loadConfig_(props), { now: NOW });
+  const result = gs.runSync_(gs.loadConfig_({ ...props, ADJUSTMENT_MINUTES_1: '15' }), { now: NOW });
+  assert.equal(result.updated, 3);
+  assert.equal(byUid(calendar)['1001@test'].start.toISOString(), '2026-10-22T02:45:00.000Z');
+});
+
+test('adjustment cannot push arrival after the start', () => {
+  const { run, calendar, state } = setup({ ...TWO_FEEDS, ADJUSTMENT_MINUTES_1: '-90' });
+  state.feeds = { 'https://one': { text: FIXTURE }, 'https://two': { text: 'BEGIN:VCALENDAR\nEND:VCALENDAR' } };
+  run();
+  // prep clamps to 0 → arrive 20:55, -23 → 20:32 → 20:30 PDT.
+  assert.equal(byUid(calendar)['1001@test'].start.toISOString(), '2026-10-22T03:30:00.000Z');
+});
+
+test('an event present in two feeds gets one lead-time event, from the first feed', () => {
+  const { run, calendar, state } = setup({ ...TWO_FEEDS, ADJUSTMENT_MINUTES_2: '30' });
+  state.feeds = { 'https://one': { text: FIXTURE }, 'https://two': { text: FIXTURE } };
+  run();
+  assert.equal(calendar.events.length, 3);
+  assert.equal(byUid(calendar)['1001@test'].start.toISOString(), '2026-10-22T03:00:00.000Z');
+});
+
+test('one broken feed does not block others and deletes nothing', () => {
+  const { run, calendar, state } = setup(TWO_FEEDS);
+  state.feeds = { 'https://one': { text: FIXTURE }, 'https://two': { text: OTHER_FEED } };
+  run();
+  assert.equal(calendar.events.length, 6);
+  // Feed 2 goes down and feed 1 drops a game: keep everything, report the error.
+  state.feeds['https://two'] = { text: 'oops', status: 503 };
+  state.feeds['https://one'].text = FIXTURE.replace('UID:1004@test', 'UID:1004-moved@test');
+  const result = run();
+  assert.equal(result.deleted, 0);
+  assert.equal(result.created, 1);
+  assert.match(result.errors.join(), /FEED_URL_2: Feed request failed with HTTP 503/);
+  assert.equal(calendar.events.length, 7);
+  // Once it recovers, the stale event is cleaned up.
+  state.feeds['https://two'] = { text: OTHER_FEED };
+  assert.equal(run().deleted, 1);
 });
