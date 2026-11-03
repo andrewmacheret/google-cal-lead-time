@@ -150,17 +150,20 @@ npm test
 cp Config.example.js src/Config.js   # then fill it in
 npm install -g @google/clasp
 clasp login                          # also turn on the Apps Script API at https://script.google.com/home/usersettings
-clasp create --type standalone --title google-cal-lead-time --rootDir src
-npm test && clasp push -f
+clasp create --type standalone --title google-cal-lead-time --rootDir build
+npm run deploy
 ```
 
-`src/Config.js` is gitignored because it holds your address and private feed keys. clasp still pushes
-it, since clasp only reads `.claspignore`.
+`npm run deploy` runs the tests and bundles `src/` into `build/`, then runs `clasp push -f`. The
+project ends up with the same two files as a release install: `Code`, which holds all the logic, and
+`Config`, which is your `src/Config.js`. `clasp push -f` replaces all of the online code, so files
+from older layouts are removed.
+
+`src/Config.js` is gitignored because it holds your address and private feed keys.
 
 To push to a project you already created, skip `clasp create`. Instead, copy the **Script ID** from
-**Project Settings** and run `echo '{"scriptId":"YOUR_SCRIPT_ID","rootDir":"src"}' > .clasp.json`.
-Don't use `clasp clone`, because it overwrites your local files in `src/`. `clasp push -f` replaces all
-of the online code with `src/`.
+**Project Settings** and run `echo '{"scriptId":"YOUR_SCRIPT_ID","rootDir":"build"}' > .clasp.json`.
+Don't use `clasp clone`, because it overwrites local files.
 
 ### Releasing
 
