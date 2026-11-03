@@ -27,13 +27,21 @@ from the feed, its lead-time event is deleted.
 
 ## Install
 
-### 1. Configure
+No git or command line needed.
 
-```sh
-cp Config.example.js src/Config.js
-```
+### 1. Add the code
 
-Edit `src/Config.js`. It defines one `SETTINGS` object:
+1. Download **`Code.gs`** and **`Config.gs`** from the
+   [latest release](https://github.com/andrewmacheret/google-cal-lead-time/releases/latest).
+2. Go to <https://script.google.com>, click **New project**, and rename it to `google-cal-lead-time`.
+3. Replace everything in the default `Code.gs` file with the contents of the downloaded `Code.gs`.
+4. Click **+ → Script**, name it `Config`, and paste in the contents of `Config.gs`.
+5. Optional: under **Project Settings** (gear icon), set **Time zone** to yours. This only affects
+   times shown in the logs.
+
+### 2. Configure
+
+Edit the `Config` file. It defines one `SETTINGS` object:
 
 ```js
 const SETTINGS = {
@@ -46,9 +54,6 @@ const SETTINGS = {
   // …
 };
 ```
-
-`src/Config.js` is gitignored because it contains your address and private feed keys. clasp still
-pushes it, since clasp only reads `.claspignore`.
 
 #### Feed settings (each entry in `FEEDS`)
 
@@ -85,37 +90,9 @@ Misspelled or unknown keys cause an error, so a typo can't be silently ignored.
 > **Integrate calendar**. With a separate calendar, you can show, hide, or delete all lead-time
 > events at once.
 
-### 2. Create the Apps Script project
-
-**Option A: [clasp](https://github.com/google/clasp) (recommended)**
-
-```sh
-npm install -g @google/clasp
-clasp login           # also turn on the Apps Script API at https://script.google.com/home/usersettings
-clasp create --type standalone --title google-cal-lead-time --rootDir src
-clasp push -f
-```
-
-To use a project you already created, skip `clasp create`. Instead, copy the **Script ID** from the
-project's **Project Settings** and run:
-
-```sh
-echo '{"scriptId":"YOUR_SCRIPT_ID","rootDir":"src"}' > .clasp.json
-clasp push -f
-```
-
-Don't use `clasp clone`, because it overwrites your local files in `src/`. To update later, run
-`npm test && clasp push -f`. This replaces all of the online code with `src/`.
-
-**Option B: copy and paste**
-
-1. Go to <https://script.google.com> → **New project**. Rename it to `google-cal-lead-time`.
-2. For each `.js` file in `src/`, click **+ → Script**, name it without the `.js` extension, and paste
-   in the contents. Delete the default `Code.gs`.
-3. Click **Project Settings** (gear icon), enable **Show "appsscript.json" manifest file in editor**,
-   then replace that file's contents with `src/appsscript.json`. Set its `timeZone` to yours.
-
 ### 3. Preview, then turn it on
+
+Save the project (**⌘S** or **Ctrl+S**), then:
 
 1. In the function dropdown, choose **`previewLeadTimes`** → **Run**. The first time, Google asks you
    to authorize the script. Because this is your own unpublished script, you'll see *"Google hasn't
@@ -126,6 +103,16 @@ Don't use `clasp clone`, because it overwrites your local files in `src/`. To up
 
 That's it. If a run fails (for example, an address Maps can't find), Google emails you a failure
 summary.
+
+## Updating
+
+1. Download `Code.gs` from the
+   [latest release](https://github.com/andrewmacheret/google-cal-lead-time/releases/latest).
+2. Replace everything in your project's `Code` file with it. Leave `Config` as is, then save.
+
+The hourly trigger uses the new code automatically. To apply it right away, run **`syncLeadTimes`**.
+If a release adds new settings, they're optional. Compare your `Config` with that release's
+`Config.gs` to see them.
 
 ## Other functions
 
@@ -156,3 +143,31 @@ Node features, so there's nothing to install.
 ```sh
 npm test
 ```
+
+### Deploying from source with clasp
+
+```sh
+cp Config.example.js src/Config.js   # then fill it in
+npm install -g @google/clasp
+clasp login                          # also turn on the Apps Script API at https://script.google.com/home/usersettings
+clasp create --type standalone --title google-cal-lead-time --rootDir src
+npm test && clasp push -f
+```
+
+`src/Config.js` is gitignored because it holds your address and private feed keys. clasp still pushes
+it, since clasp only reads `.claspignore`.
+
+To push to a project you already created, skip `clasp create`. Instead, copy the **Script ID** from
+**Project Settings** and run `echo '{"scriptId":"YOUR_SCRIPT_ID","rootDir":"src"}' > .clasp.json`.
+Don't use `clasp clone`, because it overwrites your local files in `src/`. `clasp push -f` replaces all
+of the online code with `src/`.
+
+### Releasing
+
+```sh
+npm version minor        # or patch / major: bumps package.json, commits, and tags vX.Y.Z
+git push --follow-tags
+```
+
+Pushing the tag runs the [Release workflow](.github/workflows/release.yml). It runs the tests, builds
+`dist/Code.gs` and `dist/Config.gs` with `npm run build`, and publishes them as a GitHub Release.
