@@ -57,7 +57,7 @@ function deleteAllLeadTimeEvents() {
 }
 
 function readConfig_() {
-  return loadConfig_(PropertiesService.getScriptProperties().getProperties());
+  return loadConfig_(SETTINGS);
 }
 
 function describePlanForLog_(plan) {

@@ -33,7 +33,7 @@ function runSync_(config, options) {
       if (game.status === 'CANCELLED' || game.start <= now || game.start > horizon) continue;
       if (seen[game.uid]) continue; // same event in several feeds: first feed wins
       if ((feed.includePattern && !feed.includePattern.test(game.summary)) ||
-          (feed.skipPattern && feed.skipPattern.test(game.summary))) {
+          (feed.excludePattern && feed.excludePattern.test(game.summary))) {
         result.skipped++;
         continue;
       }
