@@ -5,6 +5,7 @@
   "description": "Google Apps Script that adds 'time to leave' events before games from an iCal feed.",
   "scripts": {
     "test": "node --test \"test/*.test.js\"",
-    "build": "node scripts/build.js"
+    "build": "node scripts/build.js",
+    "deploy": "npm test && node scripts/build.js --deploy && clasp push -f"
   }
 }
