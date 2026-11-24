@@ -1,5 +1,7 @@
 # google-cal-lead-time
 
+[![Release](https://github.com/andrewmacheret/google-cal-lead-time/actions/workflows/release.yml/badge.svg)](https://github.com/andrewmacheret/google-cal-lead-time/actions/workflows/release.yml)
+
 A Google Apps Script that watches one or more iCal feeds (for example, hockey league schedules) and adds a
 **"🚗 Leave for …"** event to your Google Calendar before each game. Each block starts when you need
 to leave home and ends when the game starts:
